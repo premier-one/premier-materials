@@ -1,0 +1,30 @@
+version: "1"
+
+services:
+  influxdb:
+   image: influxdb:1.8.10
+   container_name: influx_db
+   environment:
+      - INFLUXDB_HTTP_AUTH_ENABLED=TRUE 
+      - INFLUXDB_DB=metricsDB
+      - INFLUXDB_ADMIN_USER=admin
+      - INFLUXDB_ADMIN_PASSWORD=adminpass
+      - INFLUXDB_WRITE_USER=influxUser
+      - INFLUXDB_WRITE_USER_PASSWORD=influxPass
+      - INFLUXDB_READ_USER=grafanaUser
+      - INFLUXDB_READ_USER_PASSWORD=grafanaPass
+      - INFLUXDB_META_DIR=/var/lib/influxdb/meta
+   ports:
+      - "8086:8086"
+
+  grafana:
+    image: grafana/grafana-enterprise
+    volumes:
+      - grafana-storage:/var/lib/grafana:rw
+    depends_on:
+      - influxdb
+    ports:
+      - "3000:3000"
+
+volumes:
+  grafana-storage: 

@@ -1,0 +1,125 @@
+import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform
+
+talaiot {
+    publishers {
+        influxDbPublisher {
+            dbName = "metricsDB"
+            url = "http://localhost:8086"
+            taskMetricName = "task"
+            buildMetricName = "build"
+            username = "influxUser"
+            password = "influxPass"
+        }
+    }
+
+    filter {
+        build {
+            success = true
+
+            // disable collect sync gradle time
+            requestedTasks {
+                excludes = ['runCommonizer', 'prepareKotlinIdeaImport', 'prepareKotlinBuildScriptModel', 'clean']
+            }
+        }
+    }
+
+    metrics {
+        gitMetrics = false
+        customBuildMetrics([buildMachine: buildMachine()])
+    }
+}
+
+static def buildMachine() {
+    def systems = [
+            macos  : new MacHardware(),
+            linux  : new LinuxHardware(),
+            windows: new WinHardware()
+    ]
+
+    OperatingSystem os = DefaultNativePlatform.currentOperatingSystem
+
+    BaseHardware hardwareSpec = systems[os.toFamilyName()]
+
+    if (hardwareSpec != null) {
+        return hardwareSpec.getBuildMachineName()
+    } else {
+        return "OS Family Unknown"
+    }
+}
+
+abstract class BaseHardware {
+
+    protected static String UNKNOWN_PROCESS = "Unknown process"
+
+    protected abstract String getBuildMachineInformation()
+
+    String getBuildMachineName() {
+        try {
+            return parsingMachineInformation(executeProcessAndGetResult())
+        } catch (Throwable throwable) {
+            throwable.printStackTrace()
+            return UNKNOWN_PROCESS
+        }
+    }
+
+    protected abstract String parsingMachineInformation(String machineInformation)
+
+    protected String executeProcessAndGetResult() {
+        ByteArrayOutputStream output = new ByteArrayOutputStream()
+        ByteArrayOutputStream error = new ByteArrayOutputStream()
+
+        Process process = getBuildMachineInformation().execute()
+        process.consumeProcessOutput(output, error)
+        process.waitForOrKill(5000)
+
+        if (error.size() > 0) {
+            throw new UnknownError("Cannot execute process ${error.toString()}")
+        }
+
+        return output.toString()
+    }
+}
+
+class MacHardware extends BaseHardware {
+
+    @Override
+    protected String getBuildMachineInformation() {
+        return "sysctl -n machdep.cpu.brand_string"
+    }
+
+    @Override
+    protected String parsingMachineInformation(String machineInformation) {
+        return machineInformation.trim()
+    }
+}
+
+class WinHardware extends BaseHardware {
+
+    @Override
+    protected String getBuildMachineInformation() {
+        return "wmic CPU get NAME"
+    }
+
+    @Override
+    protected String parsingMachineInformation(String machineInformation) {
+        return machineInformation
+                .substring(4)
+                .trim()
+    }
+}
+
+class LinuxHardware extends BaseHardware {
+
+    @Override
+    protected String getBuildMachineInformation() {
+        return "lscpu"
+    }
+
+    @Override
+    protected String parsingMachineInformation(String machineInformation) {
+        int startIndex = machineInformation.indexOf("Model name:") + "Model name:".length()
+        int lastIndex = machineInformation.indexOf('\n', startIndex)
+
+        return machineInformation.substring(startIndex, lastIndex).trim()
+    }
+}
